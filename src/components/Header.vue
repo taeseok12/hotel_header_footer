@@ -3,7 +3,7 @@
     <div class="container" style="height: var(--header-h); display:flex; align-items:center;">
       <div style="flex:1">
         <router-link to="/" aria-label="홈으로 이동" style="font-weight:700; font-size:20px; letter-spacing:.2px;">
-          Hotel518
+          Hotel
         </router-link>
       </div>
       <div style="flex:1; text-align:center; color:#4b5563; font-size:14px;">

@@ -1,7 +1,9 @@
 import axios from 'axios'
 
+const baseURL = import.meta.env.VITE_API_BASE || 'http://localhost:8888/api'
+
 const api = axios.create({
-  baseURL: import.meta.env.VITE_API_BASE,
+  baseURL,
   withCredentials: true // refresh 쿠키
 })
 
@@ -31,32 +33,43 @@ api.interceptors.request.use((config)=>{
   return config
 })
 
+// ---- 401 처리 & 동시 요청 큐 ----
 let refreshing = false
 let waiters = []
+function waitRefresh(){ return new Promise(res => waiters.push(res)) }
 function resume(){ waiters.forEach(r=>r()); waiters = [] }
 
 api.interceptors.response.use(
   r => r,
   async (error) => {
-    const original = error.config
-    if (error?.response?.status === 401 && !original._retry) {
+    const original = error?.config
+    const status = error?.response?.status
+    if (!original || original._retry) return Promise.reject(error)
+
+    if (status === 401) {
       if (refreshing) {
-        await new Promise(res => waiters.push(res))
+        await waitRefresh()
         return api(original)
       }
-      original._retry = true
       refreshing = true
+      original._retry = true
       try {
-        const resp = await axios.post(`${import.meta.env.VITE_API_BASE}/auth/refresh`, {}, { withCredentials: true })
+        const resp = await axios.post(`${baseURL}/auth/refresh`, {}, { withCredentials: true })
         const newToken = resp.data?.accessToken
         if (newToken) {
           setAuth(newToken, userProfile)
-          resume()
           return api(original)
+        } else {
+          setAuth(null, null)
+          return Promise.reject(error)
         }
       } catch (e) {
         setAuth(null, null)
-      } finally { refreshing = false }
+        return Promise.reject(e)
+      } finally {
+        refreshing = false
+        resume()
+      }
     }
     return Promise.reject(error)
   }
@@ -71,5 +84,10 @@ export async function subscribeEmail(email){ return (await api.post('/marketing/
 export async function getWishlist(){ return (await api.get('/my/wishlist')).data }
 export async function addWishlist(hotelId){ return (await api.post('/my/wishlist', { hotelId })).data }
 export async function removeWishlist(hotelId){ return (await api.delete(`/my/wishlist/${hotelId}`)).data }
+
+// ✅ 지역 목록 (distinct) — 제주 제외 기본
+export async function fetchRegions(excludeJeju = true){
+  return (await api.get('/hotels/regions', { params: { excludeJeju } })).data
+}
 
 export default api
